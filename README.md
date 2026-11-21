@@ -147,4 +147,4 @@ The comfort logic lives in `custom_components/cozy_control/engine.py` and has no
 
 ## License
 
-MIT, see `LICENSE`.
+GPL-3.0, see `LICENSE`.
