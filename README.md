@@ -27,7 +27,12 @@ It works with any thermostat that appears as a `climate` entity, and any weather
 
 ## Install
 
-### With HACS
+### With the Marketplace (Home Assistant 2026.11 and later)
+
+1. Open **Settings, Marketplace**, and choose **Add from link**. This needs a connected GitHub account.
+2. Enter `HarleyGaniere/cozy-control`, install **Cozy Control**, and follow the setup prompts.
+
+### With HACS (older Home Assistant versions)
 
 1. In HACS, open the menu, choose **Custom repositories**, and add `https://github.com/HarleyGaniere/cozy-control` as type **Integration**.
 2. Install **Cozy Control** and restart Home Assistant.
