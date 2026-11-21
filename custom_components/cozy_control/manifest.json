@@ -1,7 +1,12 @@
 {
   "domain": "cozy_control",
   "name": "Cozy Control",
-  "codeowners": ["@HarleyGaniere"],
+  "categories": [
+    "climate.thermostats_heating"
+  ],
+  "codeowners": [
+    "@HarleyGaniere"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/HarleyGaniere/cozy-control",
   "integration_type": "service",
