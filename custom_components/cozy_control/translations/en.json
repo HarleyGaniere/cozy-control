@@ -1,0 +1,361 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cozy Control",
+        "description": "Choose where the outdoor temperature comes from and which thermostat to control. You can change the temperature table, off range and seasons afterwards in the integration's settings.",
+        "data": {
+          "name": "Name",
+          "weather_entity": "Outdoor temperature source (weather entity or temperature sensor)",
+          "climate_entity": "Thermostat",
+          "update_interval": "How often to check and update (minutes)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This thermostat is already controlled by Cozy Control."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cozy Control settings",
+        "description": "Pick a section to edit. Choose Save when you are done.",
+        "menu_options": {
+          "general": "Source, interval and units",
+          "setpoints": "Temperature table",
+          "bedtime": "Bedtime temperatures",
+          "off_range": "Turn the thermostat off in mild weather",
+          "seasons": "Disable heating or cooling on dates",
+          "windows": "Windows and morning briefing",
+          "heat_cool": "Turn heating and cooling on or off",
+          "save": "Save and close",
+          "presence": "Phones and presence",
+          "away_temps": "Away temperatures",
+          "contacts": "Window and door sensors",
+          "safety": "Safety temperatures",
+          "indoor": "Indoor temperature sensors"
+        }
+      },
+      "general": {
+        "title": "Source, interval and units",
+        "description": "Temperatures here are shown in {unit}. You can pick several outdoor sources (weather entities or temperature sensors, such as your own outdoor sensor). With more than one, the next page sets how much each counts.",
+        "data": {
+          "update_interval": "How often to check and update (minutes)",
+          "unit": "Temperature unit for these menus",
+          "time_format": "Time format for these menus",
+          "min_change": "Ignore thermostat changes smaller than",
+          "range_width": "Width of the heat/cool range (when both are allowed)",
+          "interpolate": "Slide smoothly between table rows",
+          "outdoor_sources": "Outdoor temperature sources"
+        },
+        "data_description": {
+          "unit": "'Follow Home Assistant' uses your Home Assistant unit system. Stored values are converted automatically, so changing this never changes the real temperatures.",
+          "min_change": "Prevents constant tiny adjustments.",
+          "range_width": "Used on thermostats with a heat/cool range mode: the thermostat heats below the target minus half this width and cools above the target plus half.",
+          "interpolate": "On: 25 outside gives a value between the 20 and 30 rows. Off: the row at or below the outdoor temperature is used."
+        }
+      },
+      "setpoints": {
+        "title": "Temperature table",
+        "description": "One pair per line as 'outdoor: indoor' in {unit}. The thermostat target follows this table based on the outdoor temperature. Example: \"{example}\" means {example_inside} inside when it is {example_outside} outside.\n\n{error}",
+        "data": {
+          "setpoints": "Outdoor: indoor"
+        }
+      },
+      "bedtime": {
+        "title": "Bedtime temperatures",
+        "description": "Between the start and end time every day, the thermostat follows this table instead of the main one. Type times like {time_example}; the window may cross midnight. One pair per line as 'outdoor: indoor' in {unit}. Example: \"{example}\" means {example_inside} inside when it is {example_outside} outside.\n\n{error}",
+        "data": {
+          "bed_enabled": "Use bedtime temperatures",
+          "bed_start": "Bedtime starts",
+          "bed_end": "Bedtime ends",
+          "bed_setpoints": "Outdoor: indoor"
+        }
+      },
+      "off_range": {
+        "title": "Turn off in mild weather",
+        "description": "When the outdoor temperature is between these values (in {unit}), the thermostat is turned off. The values are kept when you switch this off, so you can switch it back on later.",
+        "data": {
+          "off_enabled": "Turn the thermostat off in mild weather",
+          "off_min": "From",
+          "off_max": "To"
+        }
+      },
+      "heat_cool": {
+        "title": "Heating and cooling",
+        "description": "Switch heating and cooling on or off here. Turn both off and the thermostat is switched off. This applies on top of the date ranges, so a mode runs only when it is on here and today is not inside its disabled dates.",
+        "data": {
+          "heat_enabled": "Allow heating",
+          "cool_enabled": "Allow cooling"
+        }
+      },
+      "seasons": {
+        "title": "Disable heating or cooling on dates",
+        "description": "One range per line as 'MM-DD to MM-DD'. They repeat every year and may cross New Year (for example '11-01 to 02-28'). Switching a list off keeps its dates, so you can switch it back on later.\n\n{error}",
+        "data": {
+          "heat_dates_enabled": "Use the no-heating dates",
+          "heat_disabled": "Never heat during",
+          "cool_dates_enabled": "Use the no-cooling dates",
+          "cool_disabled": "Never cool during"
+        }
+      },
+      "windows": {
+        "title": "Windows and morning briefing",
+        "description": "Used by the morning briefing and the windows switch. A day whose high is between Pleasant from and Pleasant up to is a good day to open windows. Temperatures are in {unit}.\n\n{error}",
+        "data": {
+          "use_forecast": "Use today's forecast high and low",
+          "win_low": "Pleasant from",
+          "win_high": "Pleasant up to",
+          "cold_at": "Cold at or below",
+          "hot_at": "Hot at or above",
+          "win_resume": "After a Yes, resume the program at",
+          "win_max_hours": "Always resume the program after at most (hours, 0 for never)",
+          "brief_dates_enabled": "Only give the briefing on these dates",
+          "brief_dates": "Briefing dates"
+        },
+        "data_description": {
+          "use_forecast": "Needs a weather entity as the source. With a plain temperature sensor the current temperature is used.",
+          "win_max_hours": "A safety net so the house does not stay off if the windows are forgotten open.",
+          "brief_dates": "One range per line as MM-DD to MM-DD, for example spring and autumn. They repeat every year."
+        }
+      },
+      "presence": {
+        "title": "Phones and presence",
+        "description": "Away mode uses a second temperature table while nobody is home. Pick the phones (device trackers from the Home Assistant app) or people to watch. The house counts as home if any of them is inside the radius around your Home Assistant home location, and as away only when all of them have been outside it for the delay. If no phone has a usable reading, the house counts as home. Each phone also gets its own switch so you can turn its location on or off at any time.",
+        "data": {
+          "away_enabled": "Use Away mode",
+          "presence_sources": "Phones or people to watch",
+          "presence_radius": "Home radius",
+          "presence_delay": "Wait before switching to Away",
+          "presence_max_accuracy": "Ignore GPS readings less accurate than"
+        },
+        "data_description": {
+          "presence_radius": "Distance from your Home Assistant home location that counts as home. Pick something larger than your typical GPS error to avoid false 'away' readings.",
+          "presence_delay": "Everyone must stay away for this long before the Away table is used. Coming home takes effect immediately.",
+          "presence_max_accuracy": "Phones sometimes report a rough position. Readings less accurate than this are ignored instead of being trusted."
+        }
+      },
+      "away_temps": {
+        "title": "Away temperatures",
+        "description": "While nobody is home the thermostat follows this table instead of the main one (and instead of the bedtime table). One pair per line as 'outdoor: indoor' in {unit}. Example: \"{example}\" means {example_inside} inside when it is {example_outside} outside.\n\n{error}",
+        "data": {
+          "away_setpoints": "Outdoor: indoor"
+        }
+      },
+      "contacts": {
+        "title": "Window and door sensors",
+        "description": "While any of the sensors you pick reports open, the thermostat is turned off. When all of them are closed again, it goes back to following your rules and can turn the heating or cooling back on. Window, door, opening and garage door sensors are offered. A sensor that is unavailable is ignored, so a dead battery never holds the thermostat off by itself, but a sensor stuck on 'open' would.",
+        "data": {
+          "contacts_enabled": "Turn the thermostat off while a window or door is open",
+          "contact_sources": "Windows and doors to watch",
+          "contact_delay": "Wait before turning the thermostat off"
+        },
+        "data_description": {
+          "contact_delay": "The window or door must stay open this long first, so quickly letting the dog out does not switch the heating off. Closing takes effect within seconds."
+        }
+      },
+      "safety": {
+        "title": "Safety temperatures",
+        "description": "A last line of defence that looks only at the temperature inside the house and ignores the outdoor weather. If the indoor temperature reaches the hot limit, cooling starts; if it falls to the cold limit, heating starts. This beats every other setting: the temperature table, Away mode, open windows and doors, the no-heating and no-cooling dates, the heating/cooling switches and the pause switch. Once triggered it keeps going until the house has recovered by {margin} {unit}. Temperatures are in {unit}. The thermostat's own limits still apply (Nest allows heating from about 7 °C and cooling up to about 35 °C).",
+        "data": {
+          "safety_enabled": "Use safety temperatures",
+          "safety_hot": "Cool if the house reaches",
+          "safety_cold": "Heat if the house drops to",
+          "safety_sensors": "Extra indoor temperature sensors (optional)"
+        },
+        "data_description": {
+          "safety_sensors": "The thermostat's own reading is always used. Add room sensors (such as Nest temperature sensors) and the hottest and coldest reading of all of them is checked."
+        }
+      },
+      "indoor": {
+        "title": "Indoor temperature sensors",
+        "description": "By default the thermostat steers by its own temperature reading. Pick other sensors here and the rules aim at the average of those instead. The thermostat's own reading is only used if you add the thermostat to the list, so leave it out to ignore it. Leave the list empty to use only the thermostat.\n\nThe next page lets you add time windows that use different sensors, such as the crib sensor at night.\n\nThe thermostat is asked for a slightly different target so that your sensors' average reaches the temperature you actually want.",
+        "data": {
+          "indoor_enabled": "Use these indoor sensors",
+          "indoor_sources": "Sensors used all day",
+          "indoor_max_offset": "Largest shift allowed to the thermostat's target"
+        },
+        "data_description": {
+          "indoor_sources": "Temperature sensors, and thermostats (their own reading).",
+          "indoor_max_offset": "A sensor far from the thermostat can read very differently. This caps how far the target can be moved so a faulty sensor cannot cause extreme settings. Shown in {unit}."
+        }
+      },
+      "indoor_weights": {
+        "title": "How much each sensor counts",
+        "description": "A bigger number gives a sensor more influence on the average. 0 ignores it, and the same weight for all of them gives a plain average.",
+        "data": {}
+      },
+      "indoor_windows": {
+        "title": "Indoor sensors by time of day",
+        "description": "While a time window is on, its sensors replace the all-day list. Add as many as you need.\n\nWindows so far:\n{windows}",
+        "menu_options": {
+          "indoor_window_add": "Add a time window",
+          "indoor_window_pick": "Change or remove a time window",
+          "indoor_done": "Done"
+        }
+      },
+      "indoor_window_add": {
+        "title": "Add a time window",
+        "description": "The sensors you pick are used between these times every day. A window may cross midnight.",
+        "data": {
+          "start": "Starts",
+          "end": "Ends",
+          "sources": "Sensors for this window"
+        }
+      },
+      "indoor_window_edit": {
+        "title": "Change a time window",
+        "description": "The sensors you pick are used between these times every day. A window may cross midnight.",
+        "data": {
+          "start": "Starts",
+          "end": "Ends",
+          "sources": "Sensors for this window",
+          "remove": "Remove this window"
+        }
+      },
+      "indoor_window_pick": {
+        "title": "Which time window?",
+        "data": {
+          "window": "Time window"
+        }
+      },
+      "outdoor_weights": {
+        "title": "How much each outdoor source counts",
+        "description": "A bigger number gives a source more influence on the average. 0 ignores it, and the same weight for all of them gives a plain average. A source that is unavailable is skipped and the others share its weight.",
+        "data": {}
+      }
+    },
+    "error": {
+      "invalid_table": "The table could not be read. Check each line looks like '20: 21' and temperatures are realistic.",
+      "off_range_incomplete": "Fill in both values, or leave both empty.",
+      "off_range_needed": "Enter both temperatures, or switch this off.",
+      "off_range_order": "'From' must not be higher than 'To'.",
+      "invalid_time": "A time could not be read. Use a time like 20:00 or 8:00 PM.",
+      "bedtime_same_time": "Bedtime must start and end at different times.",
+      "invalid_dates": "A date range could not be read. Use 'MM-DD to MM-DD'.",
+      "window_order": "The temperatures must go in order: cold, pleasant from, pleasant up to, hot.",
+      "invalid_windows_input": "Something could not be read. Check the time (like 6:00 PM) and the dates (like 03-15 to 05-31).",
+      "safety_range": "Those temperatures are not realistic.",
+      "safety_order": "The hot limit must be at least 8 °C (14 °F) above the cold limit.",
+      "indoor_same_time": "A time window cannot start and end at the same time.",
+      "indoor_window_needs_sensor": "Pick at least one sensor for the window.",
+      "outdoor_needs_source": "Pick at least one outdoor temperature source."
+    }
+  },
+  "selector": {
+    "time_format": {
+      "options": {
+        "24h": "24 hour (20:00)",
+        "12h": "12 hour with AM/PM (8:00 PM)"
+      }
+    },
+    "unit": {
+      "options": {
+        "system": "Follow Home Assistant",
+        "celsius": "Celsius (°C)",
+        "fahrenheit": "Fahrenheit (°F)"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "target_temperature": {
+        "name": "Target temperature"
+      },
+      "status": {
+        "name": "Status",
+        "state": {
+          "following_curve": "Following the temperature table",
+          "following_bedtime_table": "Following the bedtime table",
+          "outdoor_in_off_range": "Off: mild outside",
+          "heating_and_cooling_disabled": "Off: heating and cooling disabled",
+          "heating_disabled_by_date": "Heating disabled",
+          "cooling_disabled_by_date": "Cooling disabled",
+          "paused": "Paused",
+          "source_unavailable": "Outdoor temperature unavailable",
+          "thermostat_unavailable": "Thermostat unavailable",
+          "apply_failed": "Could not change the thermostat",
+          "windows_open": "Off: windows are open",
+          "following_away_table": "Following the away table",
+          "door_or_window_open": "Off: a window or door is open",
+          "safety_too_hot": "Cooling: too hot indoors (safety)",
+          "safety_too_cold": "Heating: too cold indoors (safety)"
+        }
+      },
+      "presence": {
+        "name": "Presence",
+        "state": {
+          "home": "Home",
+          "away": "Away",
+          "unknown": "Unknown"
+        }
+      },
+      "openings": {
+        "name": "Open windows and doors"
+      },
+      "indoor_temperature": {
+        "name": "Indoor temperature"
+      }
+    },
+    "switch": {
+      "enabled": {
+        "name": "Enabled"
+      },
+      "windows_open": {
+        "name": "Windows open"
+      },
+      "track_source": {
+        "name": "Track {source}"
+      }
+    },
+    "button": {
+      "update_now": {
+        "name": "Update now"
+      }
+    }
+  },
+  "services": {
+    "morning_briefing": {
+      "name": "Morning briefing",
+      "description": "Works out today's advice about the windows and the thermostat, and asks a question when one helps. It also ends any windows-open period so the day starts normally. Returns the message, and can send it to a speaker.",
+      "fields": {
+        "notify_entity": {
+          "name": "Speak on",
+          "description": "A notify entity that reads the message aloud, such as an Alexa Devices Announce entity."
+        }
+      }
+    },
+    "answer": {
+      "name": "Answer the question",
+      "description": "Answers the question from the last morning briefing with yes or no.",
+      "fields": {
+        "answer": {
+          "name": "Answer",
+          "description": "Yes or no."
+        }
+      }
+    },
+    "windows_opened": {
+      "name": "Windows opened",
+      "description": "Marks the windows as open and switches the thermostat off until the windows are marked closed, or until the time or hours given, or the safety limit in the settings.",
+      "fields": {
+        "hours": {
+          "name": "Resume after",
+          "description": "Resume the program after this many hours."
+        },
+        "until": {
+          "name": "Resume at",
+          "description": "Resume the program at this time of day."
+        }
+      }
+    },
+    "windows_closed": {
+      "name": "Windows closed",
+      "description": "Marks the windows as closed. The thermostat follows the rules again."
+    }
+  }
+}

@@ -1,0 +1,47 @@
+morning_briefing:
+  target:
+    entity:
+      integration: cozy_control
+      domain: switch
+  fields:
+    notify_entity:
+      required: false
+      selector:
+        entity:
+          domain: notify
+answer:
+  target:
+    entity:
+      integration: cozy_control
+      domain: switch
+  fields:
+    answer:
+      required: true
+      selector:
+        select:
+          options:
+            - "yes"
+            - "no"
+windows_opened:
+  target:
+    entity:
+      integration: cozy_control
+      domain: switch
+  fields:
+    hours:
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 72
+          step: 0.1
+          unit_of_measurement: h
+    until:
+      required: false
+      selector:
+        time:
+windows_closed:
+  target:
+    entity:
+      integration: cozy_control
+      domain: switch
