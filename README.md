@@ -29,7 +29,7 @@ It works with any thermostat that appears as a `climate` entity, and any weather
 
 ### With HACS
 
-1. In HACS, open the menu, choose **Custom repositories**, and add this repository as type **Integration**.
+1. In HACS, open the menu, choose **Custom repositories**, and add `https://github.com/HarleyGaniere/cozy-control` as type **Integration**.
 2. Install **Cozy Control** and restart Home Assistant.
 
 ### Manually (also for container installs)
