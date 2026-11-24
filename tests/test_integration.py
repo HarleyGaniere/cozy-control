@@ -2147,3 +2147,113 @@ async def test_settings_pause_and_open_windows_survive_a_restart(
     await hass.async_block_till_done()
     assert hass.states.get("switch.hallway_windows_open").state == "on"
     assert hass.states.get("switch.hallway_enabled").state == "off"
+
+
+# ---------------------------------------------------------------------------
+# "I'm cold" / "I'm warm"
+# ---------------------------------------------------------------------------
+
+HEAT_ONLY = ["off", "heat", "cool"]  # no range mode: one target is easier to follow
+
+
+async def test_feel_cold_warms_now_and_tunes_the_table(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 3.7)  # table gives 21.6 -> 21.5 on the thermostat
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    assert calls["temp"][-1].data["temperature"] == 21.5
+
+    result = await call(hass, "feel", {"feeling": "cold"}, response=True)
+    await hass.async_block_till_done()
+    answer = result[WINDOWS]
+    assert answer["changed"] is True
+    assert (answer["outdoor"], answer["old"], answer["new"]) == (4.0, 21.6, 22.1)
+    assert "22.1 °C" in answer["message"] and "4 °C outside" in answer["message"]
+    # The row is remembered in the table, and the neighbours are untouched.
+    table = entry.options[CONF_SETPOINTS]
+    assert [4.0, 22.1] in table and [0.0, 22.0] in table and [20.0, 20.0] in table
+    # And the thermostat follows straight away: 22.09 at 3.7 outside -> 22.0.
+    assert calls["temp"][-1].data["temperature"] == 22.0
+
+
+async def test_feel_warm_cools_and_undo_puts_the_table_back(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    before = [list(p) for p in entry.options[CONF_SETPOINTS]]
+
+    await call(hass, "feel", {"feeling": "warm", "step": 1})
+    await hass.async_block_till_done()
+    assert [0.0, 21.0] in entry.options[CONF_SETPOINTS]  # the 0 row moved, no new row
+    assert len(entry.options[CONF_SETPOINTS]) == len(before)
+    assert calls["temp"][-1].data["temperature"] == 21.0
+    undo = hass.states.get("button.hallway_undo_comfort_change")
+    assert "21 °C" in undo.attributes["last_change"]
+
+    result = await call(hass, "undo_feel", response=True)
+    await hass.async_block_till_done()
+    assert result[WINDOWS]["changed"] is True
+    assert entry.options[CONF_SETPOINTS] == before
+    assert calls["temp"][-1].data["temperature"] == 22.0
+    # Only one step back: a second undo has nothing left.
+    result = await call(hass, "undo_feel", response=True)
+    assert result[WINDOWS]["changed"] is False
+
+
+async def test_feel_buttons_and_undo_survive_a_reload(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.hallway_i_m_cold"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert [0.0, 22.5] in entry.options[CONF_SETPOINTS]
+    # The table change reloaded the entry; the undo is still there.
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.hallway_undo_comfort_change"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert [0.0, 22.0] in entry.options[CONF_SETPOINTS]
+
+
+async def test_feel_at_bedtime_tunes_the_bedtime_table(hass: HomeAssistant, calls, freezer) -> None:
+    await hass.config.async_set_time_zone("UTC")
+    freezer.move_to("2026-01-15 22:00:00")
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass, {CONF_BED_ENABLED: True})
+    await setup(hass, entry)
+    normal = [list(p) for p in entry.options[CONF_SETPOINTS]]
+    await call(hass, "feel", {"feeling": "cold"})
+    await hass.async_block_till_done()
+    assert [0.0, 18.5] in entry.options[CONF_BED_SETPOINTS]
+    assert entry.options[CONF_SETPOINTS] == normal
+    assert calls["temp"][-1].data["temperature"] == 18.5
+
+
+async def test_feel_changes_nothing_while_the_thermostat_is_off(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 10)
+    set_climate(hass, "heat_cool")
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    before = [list(p) for p in entry.options[CONF_SETPOINTS]]
+    await call(hass, "windows_opened")
+    result = await call(hass, "feel", {"feeling": "cold"}, response=True)
+    assert result[WINDOWS]["changed"] is False
+    assert entry.options[CONF_SETPOINTS] == before
+
+
+async def test_feel_in_fahrenheit_moves_one_degree(hass: HomeAssistant, calls) -> None:
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    set_weather(hass, 32, unit="°F")
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY, min_temp=45, max_temp=90, target_temp_step=1)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    result = await call(hass, "feel", {"feeling": "cold"}, response=True)
+    await hass.async_block_till_done()
+    answer = result[WINDOWS]
+    assert answer["old"] == 22.0 and answer["new"] == pytest.approx(22.6)  # +1 °F, rounded
+    assert "°F" in answer["message"]

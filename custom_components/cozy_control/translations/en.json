@@ -315,6 +315,15 @@
     "button": {
       "update_now": {
         "name": "Update now"
+      },
+      "feel_cold": {
+        "name": "I'm cold"
+      },
+      "feel_warm": {
+        "name": "I'm warm"
+      },
+      "undo_feel": {
+        "name": "Undo comfort change"
       }
     }
   },
@@ -356,6 +365,24 @@
     "windows_closed": {
       "name": "Windows closed",
       "description": "Marks the windows as closed. The thermostat follows the rules again."
+    },
+    "feel": {
+      "name": "I'm cold or warm",
+      "description": "Makes the house warmer or cooler now, and remembers it: the temperature table in use (normal, bedtime or away) is changed at today's outdoor temperature. Returns a message saying what changed.",
+      "fields": {
+        "feeling": {
+          "name": "Feeling",
+          "description": "Cold makes it warmer, warm makes it cooler."
+        },
+        "step": {
+          "name": "Change by",
+          "description": "How much warmer or cooler, in the unit shown in the settings. Without it: 0.5 °C (1 °F)."
+        }
+      }
+    },
+    "undo_feel": {
+      "name": "Undo comfort change",
+      "description": "Puts the temperature table back as it was before the last \"I'm cold\" or \"I'm warm\". Returns a message saying what changed."
     }
   }
 }

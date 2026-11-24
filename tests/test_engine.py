@@ -584,3 +584,56 @@ def test_weighted_mean_defaults_to_equal_weights():
     value, used = e.weighted_mean({"a": 10.0, "b": 20.0, "c": None}, {})
     assert value == 15.0 and used == {"a": 1.0, "b": 1.0}
     assert e.weighted_mean({"a": None}, {}) == (None, {})
+
+
+# ---- "I'm cold" / "I'm warm" ----------------------------------------------
+
+
+def test_nudge_adds_a_row_at_the_rounded_outdoor_temperature():
+    points, at, old, new = e.nudge_setpoints(EXAMPLE, 3.7, 0.5)
+    assert at == 4.0
+    assert old == pytest.approx(21.6)  # the table gave 21.6 at 4 outside
+    assert new == pytest.approx(22.1)
+    assert (4.0, 22.1) in points
+    assert len(points) == len(EXAMPLE) + 1
+    # The rows around it are unchanged.
+    assert (0.0, 22.0) in points and (20.0, 20.0) in points
+
+
+def test_nudge_moves_an_existing_row():
+    points, at, old, new = e.nudge_setpoints(EXAMPLE, 0.3, -0.5)
+    assert (at, old, new) == (0.0, 22.0, 21.5)
+    assert points == [(-20.0, 23.0), (0.0, 21.5), (20.0, 20.0), (30.0, 17.0)]
+
+
+def test_nudge_beyond_the_table_extends_it():
+    points, at, _old, new = e.nudge_setpoints(EXAMPLE, -25.2, 0.5)
+    assert at == -25.0
+    assert new == pytest.approx(23.5)
+    assert points[0] == (-25.0, 23.5)
+
+
+def test_nudge_keeps_within_limits():
+    _points, _at, _old, new = e.nudge_setpoints([(0.0, 29.8)], 0.0, 1.0)
+    assert new == e.FEEDBACK_MAX
+    _points, _at, _old, new = e.nudge_setpoints([(0.0, 10.2)], 0.0, -1.0)
+    assert new == e.FEEDBACK_MIN
+
+
+def test_nudge_fades_out_towards_the_neighbouring_rows():
+    points, *_ = e.nudge_setpoints(EXAMPLE, 10.0, 1.0)
+    assert e.setpoint_for(10.0, points) == pytest.approx(22.0)  # was 21
+    assert e.setpoint_for(5.0, points) == pytest.approx(22.0)  # was 21.5, now halfway to 22.5
+    assert e.setpoint_for(0.0, points) == pytest.approx(22.0)  # neighbour untouched
+    assert e.setpoint_for(20.0, points) == pytest.approx(20.0)
+
+
+def test_nudge_works_on_a_step_table():
+    points, at, old, new = e.nudge_setpoints(EXAMPLE, 5.0, 0.5, interpolate=False)
+    assert (at, old, new) == (5.0, 22.0, 22.5)  # the step at or below 5 gave 22
+    assert e.setpoint_for(6.0, points, interpolate=False) == 22.5
+
+
+def test_nudge_needs_a_table():
+    with pytest.raises(ValueError):
+        e.nudge_setpoints([], 0.0, 0.5)

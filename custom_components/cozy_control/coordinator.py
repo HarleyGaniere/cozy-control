@@ -22,9 +22,12 @@ from homeassistant.util import dt as dt_util
 
 from . import engine
 from .const import (
+    CONF_AWAY_SETPOINTS,
+    CONF_BED_SETPOINTS,
     CONF_CLIMATE,
     CONF_CONTACT_DELAY,
     CONF_INDOOR_MAX_OFFSET,
+    CONF_INTERPOLATE,
     CONF_INTERVAL,
     CONF_MIN_CHANGE,
     CONF_OUTDOOR_WEIGHTS,
@@ -33,11 +36,15 @@ from .const import (
     CONF_PRESENCE_RADIUS,
     CONF_RANGE_WIDTH,
     CONF_SAFETY_SENSORS,
+    CONF_SETPOINTS,
     CONF_TIME_FORMAT,
     CONF_USE_FORECAST,
     CONF_WIN_MAX_HOURS,
     CONF_WIN_RESUME,
+    DEFAULT_AWAY_SETPOINTS,
+    DEFAULT_BED_SETPOINTS,
     DEFAULT_CONTACT_DELAY,
+    DEFAULT_FEEDBACK_STEP,
     DEFAULT_INDOOR_MAX_OFFSET,
     DEFAULT_INTERVAL,
     DEFAULT_MIN_CHANGE,
@@ -45,6 +52,7 @@ from .const import (
     DEFAULT_PRESENCE_MAX_ACCURACY,
     DEFAULT_PRESENCE_RADIUS,
     DEFAULT_RANGE_WIDTH,
+    DEFAULT_SETPOINTS,
     DEFAULT_WIN_MAX_HOURS,
     DEFAULT_WIN_RESUME,
     DOMAIN,
@@ -68,6 +76,13 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 RETRY_SECONDS = 60  # how soon to look again while the weather or thermostat is unavailable
+
+# The tables "I'm cold" and "I'm warm" can tune, with their defaults and names
+FEEDBACK_TABLES = {
+    CONF_SETPOINTS: (DEFAULT_SETPOINTS, "temperature table"),
+    CONF_BED_SETPOINTS: (DEFAULT_BED_SETPOINTS, "bedtime table"),
+    CONF_AWAY_SETPOINTS: (DEFAULT_AWAY_SETPOINTS, "away table"),
+}
 
 
 @dataclass
@@ -151,6 +166,7 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self._cancel_away: CALLBACK_TYPE | None = None
         self._cancel_resume: CALLBACK_TYPE | None = None
         self._cancel_retry: CALLBACK_TYPE | None = None
+        self.feedback_undo: dict[str, Any] | None = None  # the table before the last comfort change
         self._store: Store[dict[str, Any]] = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
 
     # -- pause switch and window state survive restarts -------------------------
@@ -164,6 +180,8 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self.disabled_sources = {str(e) for e in stored.get("disabled_sources", [])}
         raw = stored.get("windows_resume_at")
         self.windows_resume_at = dt_util.parse_datetime(raw) if raw else None
+        undo = stored.get("feedback_undo")
+        self.feedback_undo = undo if isinstance(undo, dict) and undo.get("key") in FEEDBACK_TABLES else None
         self._schedule_resume()
 
     async def _async_save(self) -> None:
@@ -175,6 +193,7 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
                 "windows_resume_at": (
                     self.windows_resume_at.isoformat() if self.windows_resume_at else None
                 ),
+                "feedback_undo": self.feedback_undo,
             }
         )
 
@@ -182,6 +201,108 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self.enabled = enabled
         await self._async_save()
         await self.async_refresh()
+
+    # -- "I'm cold" / "I'm warm" -------------------------------------------------
+
+    def _table_in_use(self) -> str | None:
+        """The options key of the table setting the target now, or None.
+
+        None while nothing comes from a table: the thermostat is off (mild
+        weather, windows open, heating and cooling switched off) or a safety
+        limit is in charge.
+        """
+        decision = self.data.decision if self.data else None
+        if (
+            decision is None
+            or decision.mode == engine.OFF
+            or decision.reason in (engine.R_SAFETY_HOT, engine.R_SAFETY_COLD)
+        ):
+            return None
+        if decision.away:
+            return CONF_AWAY_SETPOINTS
+        if decision.bedtime:
+            return CONF_BED_SETPOINTS
+        return CONF_SETPOINTS
+
+    def _say(self, celsius: float) -> str:
+        unit = display_unit(self.hass, self.config_entry.options)
+        return f"{engine._fmt(engine.from_celsius(celsius, unit), 1)} {unit}"
+
+    async def async_feedback(self, warmer: bool, step: float | None = None) -> dict[str, Any]:
+        """Someone is cold (or warm): tune the table in use at today's outdoor temperature.
+
+        ``step`` is in the menus' unit; without it the change is 0.5 °C (1 °F).
+        Saving the table re-evaluates straight away, so the thermostat follows
+        within seconds. The table before the change is kept for one undo.
+        """
+        options = self.config_entry.options
+        unit = display_unit(self.hass, options)
+        if step is None:
+            step_c = 1.0 * 5.0 / 9.0 if unit == engine.UNIT_F else DEFAULT_FEEDBACK_STEP
+        else:
+            step_c = engine.delta_to_celsius(float(step), unit)
+        key = self._table_in_use()
+        outdoor = self.data.outdoor if self.data else None
+        if key is None or outdoor is None:
+            return {
+                "changed": False,
+                "message": "The thermostat isn't following a temperature table right now, "
+                "so I didn't change anything.",
+            }
+        default, table_name = FEEDBACK_TABLES[key]
+        points = [(float(o), float(i)) for o, i in options.get(key, default)]
+        new_points, at, old, new = engine.nudge_setpoints(
+            points,
+            outdoor,
+            step_c if warmer else -step_c,
+            bool(options.get(CONF_INTERPOLATE, True)),
+        )
+        if new == old:
+            return {
+                "changed": False,
+                "message": f"The {table_name} is already at its limit of {self._say(new)} "
+                f"for {self._say(at)} outside.",
+            }
+        word = "Warmer" if warmer else "Cooler"
+        message = (
+            f"{word}: the {table_name} now aims for {self._say(new)} "
+            f"at {self._say(at)} outside, instead of {self._say(old)}."
+        )
+        self.feedback_undo = {
+            "key": key,
+            "points": [list(p) for p in points],
+            "message": message,
+        }
+        await self._async_save()
+        _LOGGER.info("%s", message)
+        # Saving the options reloads the entry, which applies the new target.
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options={**options, key: [list(p) for p in new_points]}
+        )
+        return {
+            "changed": True,
+            "table": key,
+            "outdoor": at,
+            "old": old,
+            "new": new,
+            "message": message,
+        }
+
+    async def async_undo_feedback(self) -> dict[str, Any]:
+        """Put the table back as it was before the last "I'm cold" or "I'm warm"."""
+        undo = self.feedback_undo
+        if not undo:
+            return {"changed": False, "message": "There is no comfort change to undo."}
+        _default, table_name = FEEDBACK_TABLES[undo["key"]]
+        self.feedback_undo = None
+        await self._async_save()
+        message = f"Undone: the {table_name} is back as it was."
+        _LOGGER.info("%s", message)
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={**self.config_entry.options, undo["key"]: undo["points"]},
+        )
+        return {"changed": True, "table": undo["key"], "message": message}
 
     async def async_shutdown(self) -> None:
         self._stop_resume_timer()

@@ -53,6 +53,18 @@ async def async_setup_entry(
         "async_service_windows_opened",
     )
     platform.async_register_entity_service("windows_closed", None, "async_service_windows_closed")
+    platform.async_register_entity_service(
+        "feel",
+        {
+            vol.Required("feeling"): vol.All(cv.string, vol.Lower, vol.In(["cold", "warm"])),
+            vol.Optional("step"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=5)),
+        },
+        "async_service_feel",
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    platform.async_register_entity_service(
+        "undo_feel", None, "async_service_undo_feel", supports_response=SupportsResponse.OPTIONAL
+    )
 
 
 class EnabledSwitch(ComfortEntity, SwitchEntity):
@@ -138,3 +150,9 @@ class WindowsOpenSwitch(ComfortEntity, SwitchEntity):
 
     async def async_service_windows_closed(self) -> None:
         await self.coordinator.async_windows_closed()
+
+    async def async_service_feel(self, feeling: str, step: float | None = None) -> dict[str, Any]:
+        return await self.coordinator.async_feedback(feeling == "cold", step)
+
+    async def async_service_undo_feel(self) -> dict[str, Any]:
+        return await self.coordinator.async_undo_feedback()

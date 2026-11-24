@@ -135,6 +135,49 @@ def setpoint_for(
 
 
 # --------------------------------------------------------------------------
+# "I'm cold" / "I'm warm": tune a table where it is wrong
+# --------------------------------------------------------------------------
+
+FEEDBACK_SNAP = 1.0  # rows are added at whole degrees (Celsius), so the table stays tidy
+FEEDBACK_MIN = 10.0  # a nudged row never goes below or above these (Celsius)
+FEEDBACK_MAX = 30.0
+
+
+def nudge_setpoints(
+    points: list[tuple[float, float]],
+    outdoor: float,
+    delta: float,
+    interpolate: bool = True,
+    snap: float = FEEDBACK_SNAP,
+) -> tuple[list[tuple[float, float]], float, float, float]:
+    """Make the table ``delta`` warmer (or cooler, if negative) at ``outdoor``.
+
+    The outdoor temperature is rounded to ``snap``. A row already there is
+    moved; otherwise a row is added there, at what the table gave plus
+    ``delta``. Rows around it are untouched, so with a sliding table the change
+    fades out towards the neighbouring rows, and the rest of the table stays as
+    it was. The result is kept within FEEDBACK_MIN and FEEDBACK_MAX and rounded
+    to 0.1.
+
+    Returns (new points, the row's outdoor temperature, old indoor, new indoor).
+    """
+    if not points:
+        raise ValueError("The setpoint table is empty.")
+    at = round_to_step(outdoor, snap)
+    pts = sorted(points)
+    for x, y in pts:
+        if abs(x - at) < 1e-6:
+            old = y
+            break
+    else:
+        old = setpoint_for(at, pts, interpolate)
+    new = round(min(FEEDBACK_MAX, max(FEEDBACK_MIN, old + delta)), 1)
+    result = [(x, y) for x, y in pts if abs(x - at) >= 1e-6]
+    result.append((at, new))
+    return sorted(result), at, round(old, 1), new
+
+
+# --------------------------------------------------------------------------
 # Date windows for "heat/AC disabled" seasons
 # --------------------------------------------------------------------------
 

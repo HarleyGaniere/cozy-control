@@ -91,6 +91,7 @@ DEFAULT_BED_END = "05:00"
 DEFAULT_WIN_RESUME = "18:00"
 DEFAULT_WIN_MAX_HOURS = 12
 PENDING_MINUTES = 120  # how long a spoken question waits for its answer
+DEFAULT_FEEDBACK_STEP = 0.5  # Celsius: how much one "I'm cold" or "I'm warm" changes
 
 PRESENCE_OPTIONS = [engine.PRESENCE_HOME, engine.PRESENCE_AWAY, engine.PRESENCE_UNKNOWN]
 

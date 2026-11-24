@@ -8,6 +8,7 @@ It works with any thermostat that appears as a `climate` entity, and any weather
 
 ## Features
 
+* **"I'm cold" and "I'm warm".** Two buttons (and an action for voice assistants) that make the house warmer or cooler right away and remember it: the table in use gets a row at today's outdoor temperature, so next time it's this cold outside the house is already right. Over a few weeks the table tunes itself to how your household actually feels. One press can be undone.
 * **Your own temperature table.** One `outdoor: indoor` pair per line, edited from the integration's settings menu. The target slides smoothly between rows (or steps, if you prefer).
 * **Any unit.** The menus follow your Home Assistant unit system, or you can pick Celsius or Fahrenheit. Values are stored in Celsius and converted, so switching units never changes your real temperatures.
 * **Any source.** Choose a weather entity (Met.no, NWS, and others) or any temperature sensor as the outdoor reading.
@@ -89,6 +90,36 @@ One range per line, as `MM-DD to MM-DD`:
 
 Use it when the AC breaker is off until a certain date, or you never want heat in summer. A range may cross New Year, for example `11-01 to 02-28`.
 
+## I'm cold, I'm warm
+
+The table is a guess until you have lived with it. Instead of editing numbers, press **I'm cold** or **I'm warm** when it feels wrong:
+
+* The target changes straight away, by 0.5 °C (1 °F), and the thermostat follows within seconds.
+* The change is remembered in whichever table is in use right now: the temperature table, or the bedtime or away table when those apply. It goes in a row at today's outdoor temperature, rounded to a whole degree: an existing row there is moved, otherwise a row is added. Rows elsewhere stay as they are, and with sliding rows the change fades out towards the neighbouring rows. You can see and edit the new rows in **Configure, Temperature table** like any other.
+* Rows never go below 10 °C or above 30 °C.
+* **Undo comfort change** puts the table back as it was before the last press. Its `last_change` attribute says what that press did.
+* Nothing changes while no table is in charge: when the thermostat is off (mild weather, windows open, heating and cooling switched off) or a safety limit is heating or cooling.
+
+For voice assistants and automations, the same is available as actions on the **Windows open** switch. Both return a `message` that can be read aloud:
+
+* `cozy_control.feel` with `feeling: cold` or `feeling: warm`, and an optional `step` in your unit.
+* `cozy_control.undo_feel`.
+
+```yaml
+actions:
+  - action: cozy_control.feel
+    target:
+      entity_id: switch.hallway_windows_open
+    data:
+      feeling: cold
+    response_variable: result
+  - action: notify.send_message
+    target:
+      entity_id: notify.kitchen_echo_announce
+    data:
+      message: "{{ result['switch.hallway_windows_open'].message }}"
+```
+
 ## Windows and the morning briefing
 
 Open **Configure, Windows and morning briefing** to set:
@@ -130,6 +161,8 @@ For each thermostat the integration creates one device with:
 * `switch.<name>_enabled`: pause and resume. The state survives restarts.
 * `switch.<name>_windows_open`: on while the windows are open and the thermostat is off. The state survives restarts, and its `resumes_at` attribute shows when it ends.
 * `button.<name>_update_now`: re-check right now.
+* `button.<name>_i_m_cold` and `button.<name>_i_m_warm`: warmer or cooler now, remembered in the table.
+* `button.<name>_undo_comfort_change`: undo the last of those.
 
 ## How the thermostat is controlled
 
