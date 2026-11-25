@@ -149,6 +149,8 @@ def nudge_setpoints(
     delta: float,
     interpolate: bool = True,
     snap: float = FEEDBACK_SNAP,
+    low: float = FEEDBACK_MIN,
+    high: float = FEEDBACK_MAX,
 ) -> tuple[list[tuple[float, float]], float, float, float]:
     """Make the table ``delta`` warmer (or cooler, if negative) at ``outdoor``.
 
@@ -156,8 +158,10 @@ def nudge_setpoints(
     moved; otherwise a row is added there, at what the table gave plus
     ``delta``. Rows around it are untouched, so with a sliding table the change
     fades out towards the neighbouring rows, and the rest of the table stays as
-    it was. The result is kept within FEEDBACK_MIN and FEEDBACK_MAX and rounded
-    to 0.1.
+    it was. The result is kept within ``low`` and ``high`` (and always within
+    FEEDBACK_MIN and FEEDBACK_MAX) and rounded to 0.1. A row already outside
+    those limits is never pulled back by a change in the other direction: it
+    just doesn't move.
 
     Returns (new points, the row's outdoor temperature, old indoor, new indoor).
     """
@@ -171,7 +175,15 @@ def nudge_setpoints(
             break
     else:
         old = setpoint_for(at, pts, interpolate)
-    new = round(min(FEEDBACK_MAX, max(FEEDBACK_MIN, old + delta)), 1)
+    low = max(FEEDBACK_MIN, low)
+    high = min(FEEDBACK_MAX, high)
+    if delta > 0:
+        new = old if old >= high else min(high, old + delta)
+    else:
+        new = old if old <= low else max(low, old + delta)
+    new = round(new, 1)
+    if abs(new - round(old, 1)) < 1e-9:
+        return sorted(points), at, round(old, 1), round(old, 1)
     result = [(x, y) for x, y in pts if abs(x - at) >= 1e-6]
     result.append((at, new))
     return sorted(result), at, round(old, 1), new

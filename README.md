@@ -8,7 +8,7 @@ It works with any thermostat that appears as a `climate` entity, and any weather
 
 ## Features
 
-* **"I'm cold" and "I'm warm".** Two buttons (and an action for voice assistants) that make the house warmer or cooler right away and remember it: the table in use gets a row at today's outdoor temperature, so next time it's this cold outside the house is already right. Over a few weeks the table tunes itself to how your household actually feels. One press can be undone.
+* **"I'm cold" and "I'm warm".** Two buttons (and an action for voice assistants) that make the house warmer or cooler right away and remember it: the table in use gets a row at today's outdoor temperature, so next time it's this cold outside the house is already right. Over a few weeks the table tunes itself to how your household actually feels. A whole burst of presses can be undone at once, and a daily limit stops anyone from running away with the temperature by pressing over and over.
 * **Your own temperature table.** One `outdoor: indoor` pair per line, edited from the integration's settings menu. The target slides smoothly between rows (or steps, if you prefer).
 * **Any unit.** The menus follow your Home Assistant unit system, or you can pick Celsius or Fahrenheit. Values are stored in Celsius and converted, so switching units never changes your real temperatures.
 * **Any source.** Choose a weather entity (Met.no, NWS, and others) or any temperature sensor as the outdoor reading.
@@ -97,7 +97,8 @@ The table is a guess until you have lived with it. Instead of editing numbers, p
 * The target changes straight away, by 0.5 °C (1 °F), and the thermostat follows within seconds.
 * The change is remembered in whichever table is in use right now: the temperature table, or the bedtime or away table when those apply. It goes in a row at today's outdoor temperature, rounded to a whole degree: an existing row there is moved, otherwise a row is added. Rows elsewhere stay as they are, and with sliding rows the change fades out towards the neighbouring rows. You can see and edit the new rows in **Configure, Temperature table** like any other.
 * Rows never go below 10 °C or above 30 °C.
-* **Undo comfort change** puts the table back as it was before the last press. Its `last_change` attribute says what that press did.
+* **Undo comfort change** puts the table back as it was before the last change. Presses within 15 minutes of each other count as one change, so a single undo puts back a whole burst of presses. Its `last_change` attribute says what the last press did.
+* **Failsafe:** a row moves at most 2 °C (about 4 °F) up or down in a day, measured from where it stood that morning. Presses past that are ignored (and logged), so someone pressing a button over and over can't run away with the table. The other direction still works. Both numbers are in **Configure, General**: set the burst to 0 to undo one press at a time, or the daily limit to 0 to turn it off.
 * Nothing changes while no table is in charge: when the thermostat is off (mild weather, windows open, heating and cooling switched off) or a safety limit is heating or cooling.
 
 For voice assistants and automations, the same is available as actions on the **Windows open** switch. Both return a `message` that can be read aloud:

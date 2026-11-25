@@ -47,13 +47,17 @@
           "min_change": "Ignore thermostat changes smaller than",
           "range_width": "Width of the heat/cool range (when both are allowed)",
           "interpolate": "Slide smoothly between table rows",
-          "outdoor_sources": "Outdoor temperature sources"
+          "outdoor_sources": "Outdoor temperature sources",
+          "feedback_burst": "Undo \"I'm cold\" and \"I'm warm\" presses together when this close",
+          "feedback_limit": "Most \"I'm cold\" or \"I'm warm\" can move a temperature in a day"
         },
         "data_description": {
           "unit": "'Follow Home Assistant' uses your Home Assistant unit system. Stored values are converted automatically, so changing this never changes the real temperatures.",
           "min_change": "Prevents constant tiny adjustments.",
           "range_width": "Used on thermostats with a heat/cool range mode: the thermostat heats below the target minus half this width and cools above the target plus half.",
-          "interpolate": "On: 25 outside gives a value between the 20 and 30 rows. Off: the row at or below the outdoor temperature is used."
+          "interpolate": "On: 25 outside gives a value between the 20 and 30 rows. Off: the row at or below the outdoor temperature is used.",
+          "feedback_burst": "Presses this many minutes apart or closer count as one change, so a single Undo puts everything back. 0 undoes one press at a time.",
+          "feedback_limit": "A failsafe against repeated presses: each table row can move at most this far up or down from where it was that morning. 0 turns the limit off."
         }
       },
       "setpoints": {

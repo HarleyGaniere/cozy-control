@@ -65,6 +65,8 @@ CONF_HEAT_DATES_ENABLED = "heat_dates_enabled"
 CONF_COOL_DATES_ENABLED = "cool_dates_enabled"
 CONF_HEAT_DISABLED = "heat_disabled"
 CONF_COOL_DISABLED = "cool_disabled"
+CONF_FEEDBACK_BURST = "feedback_burst"  # minutes: presses closer than this are one change
+CONF_FEEDBACK_LIMIT = "feedback_limit"  # Celsius a row may move in a day; 0 = no limit
 
 TIME_24H = "24h"
 TIME_12H = "12h"
@@ -92,6 +94,8 @@ DEFAULT_WIN_RESUME = "18:00"
 DEFAULT_WIN_MAX_HOURS = 12
 PENDING_MINUTES = 120  # how long a spoken question waits for its answer
 DEFAULT_FEEDBACK_STEP = 0.5  # Celsius: how much one "I'm cold" or "I'm warm" changes
+DEFAULT_FEEDBACK_BURST = 15  # minutes: presses this close together are undone together
+DEFAULT_FEEDBACK_LIMIT = 2.0  # Celsius: the most one row can move in a day
 
 PRESENCE_OPTIONS = [engine.PRESENCE_HOME, engine.PRESENCE_AWAY, engine.PRESENCE_UNKNOWN]
 
@@ -165,6 +169,8 @@ def default_options() -> dict[str, Any]:
         CONF_COOL_ENABLED: True,
         CONF_HEAT_DISABLED: "",
         CONF_COOL_DISABLED: "",
+        CONF_FEEDBACK_BURST: DEFAULT_FEEDBACK_BURST,
+        CONF_FEEDBACK_LIMIT: DEFAULT_FEEDBACK_LIMIT,
     }
 
 

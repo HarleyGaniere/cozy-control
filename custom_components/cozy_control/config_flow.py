@@ -44,6 +44,8 @@ from .const import (
     CONF_COOL_DATES_ENABLED,
     CONF_COOL_DISABLED,
     CONF_COOL_ENABLED,
+    CONF_FEEDBACK_BURST,
+    CONF_FEEDBACK_LIMIT,
     CONF_HEAT_DATES_ENABLED,
     CONF_HEAT_DISABLED,
     CONF_HEAT_ENABLED,
@@ -84,6 +86,8 @@ from .const import (
     DEFAULT_BED_SETPOINTS,
     DEFAULT_BED_START,
     DEFAULT_CONTACT_DELAY,
+    DEFAULT_FEEDBACK_BURST,
+    DEFAULT_FEEDBACK_LIMIT,
     DEFAULT_INDOOR_MAX_OFFSET,
     DEFAULT_INDOOR_WINDOW,
     DEFAULT_INTERVAL,
@@ -115,6 +119,12 @@ CLIMATE_SELECTOR = EntitySelector(EntitySelectorConfig(domain="climate"))
 INTERVAL_SELECTOR = NumberSelector(
     NumberSelectorConfig(
         min=1, max=1440, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min"
+    )
+)
+
+BURST_SELECTOR = NumberSelector(
+    NumberSelectorConfig(
+        min=0, max=240, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min"
     )
 )
 
@@ -240,6 +250,10 @@ class CozyControlOptionsFlow(OptionsFlow):
             o[CONF_RANGE_WIDTH] = engine.delta_to_celsius(
                 float(user_input[CONF_RANGE_WIDTH]), old_unit
             )
+            o[CONF_FEEDBACK_BURST] = int(user_input[CONF_FEEDBACK_BURST])
+            o[CONF_FEEDBACK_LIMIT] = engine.delta_to_celsius(
+                float(user_input[CONF_FEEDBACK_LIMIT]), old_unit
+            )
             if len(chosen) > 1:
                 return await self.async_step_outdoor_weights()
             return await self.async_step_init()
@@ -288,6 +302,19 @@ class CozyControlOptionsFlow(OptionsFlow):
                     ),
                 ): _delta_selector(unit),
                 vol.Required(CONF_INTERPOLATE, default=o.get(CONF_INTERPOLATE, True)): BooleanSelector(),
+                vol.Required(
+                    CONF_FEEDBACK_BURST,
+                    default=int(o.get(CONF_FEEDBACK_BURST, DEFAULT_FEEDBACK_BURST)),
+                ): BURST_SELECTOR,
+                vol.Required(
+                    CONF_FEEDBACK_LIMIT,
+                    default=round(
+                        engine.delta_from_celsius(
+                            o.get(CONF_FEEDBACK_LIMIT, DEFAULT_FEEDBACK_LIMIT), unit
+                        ),
+                        2,
+                    ),
+                ): _delta_selector(unit),
             }
         )
         return self.async_show_form(

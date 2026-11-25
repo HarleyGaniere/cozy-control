@@ -620,6 +620,24 @@ def test_nudge_keeps_within_limits():
     assert new == e.FEEDBACK_MIN
 
 
+def test_nudge_keeps_within_given_limits():
+    _points, _at, old, new = e.nudge_setpoints([(0.0, 23.8)], 0.0, 0.5, high=24.0)
+    assert (old, new) == (23.8, 24.0)
+    points, _at, old, new = e.nudge_setpoints([(0.0, 24.0)], 0.0, 0.5, high=24.0)
+    assert new == old == 24.0 and points == [(0.0, 24.0)]
+    _points, _at, _old, new = e.nudge_setpoints([(0.0, 20.2)], 0.0, -0.5, low=20.0)
+    assert new == 20.0
+
+
+def test_nudge_never_pulls_a_row_back_the_other_way():
+    # The row is already above the limit (the table was edited by hand): warmer
+    # leaves it alone instead of lowering it to the limit, and cooler still works.
+    _points, _at, old, new = e.nudge_setpoints([(0.0, 25.0)], 0.0, 0.5, high=24.0)
+    assert new == old == 25.0
+    _points, _at, _old, new = e.nudge_setpoints([(0.0, 25.0)], 0.0, -0.5, high=24.0)
+    assert new == 24.5
+
+
 def test_nudge_fades_out_towards_the_neighbouring_rows():
     points, *_ = e.nudge_setpoints(EXAMPLE, 10.0, 1.0)
     assert e.setpoint_for(10.0, points) == pytest.approx(22.0)  # was 21

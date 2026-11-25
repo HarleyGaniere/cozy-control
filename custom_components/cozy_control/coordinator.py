@@ -26,6 +26,8 @@ from .const import (
     CONF_BED_SETPOINTS,
     CONF_CLIMATE,
     CONF_CONTACT_DELAY,
+    CONF_FEEDBACK_BURST,
+    CONF_FEEDBACK_LIMIT,
     CONF_INDOOR_MAX_OFFSET,
     CONF_INTERPOLATE,
     CONF_INTERVAL,
@@ -44,6 +46,8 @@ from .const import (
     DEFAULT_AWAY_SETPOINTS,
     DEFAULT_BED_SETPOINTS,
     DEFAULT_CONTACT_DELAY,
+    DEFAULT_FEEDBACK_BURST,
+    DEFAULT_FEEDBACK_LIMIT,
     DEFAULT_FEEDBACK_STEP,
     DEFAULT_INDOOR_MAX_OFFSET,
     DEFAULT_INTERVAL,
@@ -167,6 +171,8 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self._cancel_resume: CALLBACK_TYPE | None = None
         self._cancel_retry: CALLBACK_TYPE | None = None
         self.feedback_undo: dict[str, Any] | None = None  # the table before the last comfort change
+        # Where each changed row stood at the start of today, for the daily limit.
+        self.feedback_day: dict[str, Any] = {}
         self._store: Store[dict[str, Any]] = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
 
     # -- pause switch and window state survive restarts -------------------------
@@ -182,6 +188,8 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self.windows_resume_at = dt_util.parse_datetime(raw) if raw else None
         undo = stored.get("feedback_undo")
         self.feedback_undo = undo if isinstance(undo, dict) and undo.get("key") in FEEDBACK_TABLES else None
+        day = stored.get("feedback_day")
+        self.feedback_day = day if isinstance(day, dict) else {}
         self._schedule_resume()
 
     async def _async_save(self) -> None:
@@ -194,6 +202,7 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
                     self.windows_resume_at.isoformat() if self.windows_resume_at else None
                 ),
                 "feedback_undo": self.feedback_undo,
+                "feedback_day": self.feedback_day,
             }
         )
 
@@ -233,7 +242,8 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
 
         ``step`` is in the menus' unit; without it the change is 0.5 °C (1 °F).
         Saving the table re-evaluates straight away, so the thermostat follows
-        within seconds. The table before the change is kept for one undo.
+        within seconds. The table before the change is kept for one undo, which
+        covers every press in a burst. A row moves at most the daily limit.
         """
         options = self.config_entry.options
         unit = display_unit(self.hass, options)
@@ -251,27 +261,71 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
             }
         default, table_name = FEEDBACK_TABLES[key]
         points = [(float(o), float(i)) for o, i in options.get(key, default)]
+        interpolate = bool(options.get(CONF_INTERPOLATE, True))
+        now = dt_util.now()
+
+        # Daily limit: a row can't move more than this from where it stood this
+        # morning, however often the button is pressed.
+        at = engine.round_to_step(outdoor, engine.FEEDBACK_SNAP)
+        row = f"{key}|{at:g}"
+        today = now.date().isoformat()
+        if self.feedback_day.get("date") != today:
+            self.feedback_day = {"date": today, "start": {}}
+        starts: dict[str, float] = self.feedback_day.setdefault("start", {})
+        start = starts.get(row)
+        if start is None:
+            start = round(engine.setpoint_for(at, sorted(points), interpolate), 1)
+            for x, y in points:
+                if abs(x - at) < 1e-6:
+                    start = round(y, 1)
+        limit = float(options.get(CONF_FEEDBACK_LIMIT, DEFAULT_FEEDBACK_LIMIT))
+        low, high = (start - limit, start + limit) if limit > 0 else (engine.FEEDBACK_MIN, engine.FEEDBACK_MAX)
+
         new_points, at, old, new = engine.nudge_setpoints(
             points,
             outdoor,
             step_c if warmer else -step_c,
-            bool(options.get(CONF_INTERPOLATE, True)),
+            interpolate,
+            low=low,
+            high=high,
         )
         if new == old:
-            return {
-                "changed": False,
-                "message": f"The {table_name} is already at its limit of {self._say(new)} "
-                f"for {self._say(at)} outside.",
-            }
+            daily = limit > 0 and (
+                (warmer and high < engine.FEEDBACK_MAX) or (not warmer and low > engine.FEEDBACK_MIN)
+            )
+            if daily:
+                message = (
+                    f"The {table_name} has already moved as far as it can today "
+                    f"for {self._say(at)} outside, so I left it at {self._say(new)}."
+                )
+            else:
+                message = (
+                    f"The {table_name} is already at its limit of {self._say(new)} "
+                    f"for {self._say(at)} outside."
+                )
+            _LOGGER.info("%s", message)
+            return {"changed": False, "message": message}
+        starts.setdefault(row, start)
         word = "Warmer" if warmer else "Cooler"
         message = (
             f"{word}: the {table_name} now aims for {self._say(new)} "
             f"at {self._say(at)} outside, instead of {self._say(old)}."
         )
+
+        # Presses close together are one change: undo puts the table back as it
+        # was before the first of them.
+        burst = timedelta(minutes=float(options.get(CONF_FEEDBACK_BURST, DEFAULT_FEEDBACK_BURST)))
+        undo = self.feedback_undo
+        last = dt_util.parse_datetime(str(undo.get("last", ""))) if undo else None
+        if undo and undo.get("key") == key and last is not None and now - last <= burst:
+            before = undo["points"]
+        else:
+            before = [list(p) for p in points]
         self.feedback_undo = {
             "key": key,
-            "points": [list(p) for p in points],
+            "points": before,
             "message": message,
+            "last": now.isoformat(),
         }
         await self._async_save()
         _LOGGER.info("%s", message)
@@ -289,7 +343,10 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         }
 
     async def async_undo_feedback(self) -> dict[str, Any]:
-        """Put the table back as it was before the last "I'm cold" or "I'm warm"."""
+        """Put the table back as it was before the last "I'm cold" or "I'm warm".
+
+        Presses close together count as one, so this undoes the whole burst.
+        """
         undo = self.feedback_undo
         if not undo:
             return {"changed": False, "message": "There is no comfort change to undo."}

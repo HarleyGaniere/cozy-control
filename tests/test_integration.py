@@ -31,6 +31,8 @@ from custom_components.cozy_control.const import (
     CONF_COOL_DATES_ENABLED,
     CONF_COOL_DISABLED,
     CONF_COOL_ENABLED,
+    CONF_FEEDBACK_BURST,
+    CONF_FEEDBACK_LIMIT,
     CONF_HEAT_DATES_ENABLED,
     CONF_HEAT_DISABLED,
     CONF_HEAT_ENABLED,
@@ -2257,3 +2259,89 @@ async def test_feel_in_fahrenheit_moves_one_degree(hass: HomeAssistant, calls) -
     answer = result[WINDOWS]
     assert answer["old"] == 22.0 and answer["new"] == pytest.approx(22.6)  # +1 °F, rounded
     assert "°F" in answer["message"]
+
+
+# ---------------------------------------------------------------------------
+# Failsafe: a burst of presses is undone at once, and a row moves at most the
+# daily limit
+# ---------------------------------------------------------------------------
+
+
+async def press(hass, name: str, times: int = 1) -> None:
+    for _ in range(times):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": f"button.hallway_{name}"}, blocking=True
+        )
+        await hass.async_block_till_done()
+
+
+def row(entry, outdoor: float) -> float:
+    return {o: i for o, i in entry.options[CONF_SETPOINTS]}[outdoor]
+
+
+async def test_mashing_cold_stops_at_the_daily_limit(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    await press(hass, "i_m_cold", 30)
+    assert row(entry, 0.0) == 24.0  # 22 + the 2 °C limit, not 30
+    result = await call(hass, "feel", {"feeling": "cold"}, response=True)
+    assert result[WINDOWS]["changed"] is False
+    assert "as far as it can today" in result[WINDOWS]["message"]
+    # Warmer is used up, but cooler still works.
+    await press(hass, "i_m_warm")
+    assert row(entry, 0.0) == 23.5
+
+
+async def test_one_undo_reverts_a_whole_burst(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    before = [list(p) for p in entry.options[CONF_SETPOINTS]]
+    await press(hass, "i_m_cold", 4)
+    await press(hass, "i_m_warm")
+    assert row(entry, 0.0) == 23.5
+    await press(hass, "undo_comfort_change")
+    assert entry.options[CONF_SETPOINTS] == before
+    assert calls["temp"][-1].data["temperature"] == 22.0
+
+
+async def test_presses_far_apart_are_undone_separately(hass: HomeAssistant, calls, freezer) -> None:
+    freezer.move_to("2026-01-15 12:00:00")
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    await press(hass, "i_m_cold", 2)
+    freezer.tick(timedelta(minutes=20))
+    await press(hass, "i_m_cold")
+    assert row(entry, 0.0) == 23.5
+    await press(hass, "undo_comfort_change")
+    assert row(entry, 0.0) == 23.0  # only the later press is undone
+
+
+async def test_the_daily_limit_starts_over_the_next_day(hass: HomeAssistant, calls, freezer) -> None:
+    await hass.config.async_set_time_zone("UTC")
+    freezer.move_to("2026-01-15 12:00:00")
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass)
+    await setup(hass, entry)
+    await press(hass, "i_m_cold", 10)
+    assert row(entry, 0.0) == 24.0
+    freezer.move_to("2026-01-16 12:00:00")
+    await press(hass, "i_m_cold")
+    assert row(entry, 0.0) == 24.5
+
+
+async def test_failsafe_settings_can_be_turned_off(hass: HomeAssistant, calls) -> None:
+    set_weather(hass, 0)
+    set_climate(hass, "off", hvac_modes=HEAT_ONLY)
+    entry = make_entry(hass, {CONF_FEEDBACK_BURST: 0, CONF_FEEDBACK_LIMIT: 0})
+    await setup(hass, entry)
+    await press(hass, "i_m_cold", 10)
+    assert row(entry, 0.0) == 27.0  # no daily limit
+    await press(hass, "undo_comfort_change")
+    assert row(entry, 0.0) == 26.5  # one press at a time
