@@ -1697,6 +1697,7 @@ def room(hass, entity_id, value, unit="°C"):
 
 
 def indoor_options(sources, windows=None, weights=None, **extra):
+    extra.setdefault(CONF_INDOOR_MAX_OFFSET, 3.0)
     return {
         CONF_INDOOR_ENABLED: True,
         CONF_INDOOR_SOURCES: sources,
@@ -2345,3 +2346,78 @@ async def test_failsafe_settings_can_be_turned_off(hass: HomeAssistant, calls) -
     assert row(entry, 0.0) == 27.0  # no daily limit
     await press(hass, "undo_comfort_change")
     assert row(entry, 0.0) == 26.5  # one press at a time
+
+
+# ---------------------------------------------------------------------------
+# The indoor shift is measured while idle and held while heating, so it can't
+# feed on itself
+# ---------------------------------------------------------------------------
+
+
+def thermostat(hass, reading, action, temperature=22.0):
+    set_climate(
+        hass,
+        "heat",
+        hvac_modes=MODES,
+        temperature=temperature,
+        current_temperature=reading,
+        hvac_action=action,
+    )
+
+
+async def settle(hass, freezer, minutes):
+    for _ in range(minutes // 5):
+        freezer.tick(timedelta(minutes=5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+
+def shift(hass) -> float:
+    return hass.states.get("sensor.hallway_indoor_temperature").attributes["target_shift_c"]
+
+
+async def test_default_largest_shift_is_one_and_a_half(hass: HomeAssistant, calls, freezer) -> None:
+    room(hass, CRIB, 10.0)
+    options = indoor_options([CRIB])
+    del options[CONF_INDOOR_MAX_OFFSET]
+    await _indoor_setup(hass, freezer, options)
+    assert calls["temp"][-1].data["temperature"] == 23.5  # 22 + the 1.5 default cap
+
+
+async def test_shift_follows_the_gap_slowly_while_idle(hass: HomeAssistant, calls, freezer) -> None:
+    room(hass, CRIB, 20.0)  # 2 colder than the thermostat
+    await _indoor_setup(hass, freezer, indoor_options([CRIB, CLIMATE]))
+    thermostat(hass, 22.0, "idle")
+    await hass.async_block_till_done()
+    assert 0 < shift(hass) < 0.5  # a fresh gap only counts a little at first
+    await settle(hass, freezer, 180)
+    assert shift(hass) == pytest.approx(1.0, abs=0.05)  # half the gap with both sensors
+
+
+async def test_shift_holds_while_heating_so_it_cannot_run_away(
+    hass: HomeAssistant, calls, freezer
+) -> None:
+    room(hass, CRIB, 20.0)
+    await _indoor_setup(hass, freezer, indoor_options([CRIB, CLIMATE]))
+    thermostat(hass, 22.0, "idle")
+    await settle(hass, freezer, 180)
+    held = shift(hass)
+    # The furnace runs: the hallway races ahead of the bedroom.
+    for reading in (23.0, 24.0, 25.0, 26.0):
+        thermostat(hass, reading, "heating", calls["temp"][-1].data["temperature"])
+        await settle(hass, freezer, 15)
+        assert shift(hass) == held
+    assert calls["temp"][-1].data["temperature"] <= 23.0  # this morning it climbed to 25
+
+
+async def test_learned_shift_survives_a_reload(hass: HomeAssistant, calls, freezer) -> None:
+    room(hass, CRIB, 20.0)
+    await _indoor_setup(hass, freezer, indoor_options([CRIB, CLIMATE]))
+    thermostat(hass, 22.0, "idle")
+    await settle(hass, freezer, 180)
+    learned = shift(hass)
+    thermostat(hass, 25.0, "heating")
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert shift(hass) == learned

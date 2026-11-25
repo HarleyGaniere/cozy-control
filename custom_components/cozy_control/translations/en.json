@@ -182,7 +182,7 @@
         },
         "data_description": {
           "indoor_sources": "Temperature sensors, and thermostats (their own reading).",
-          "indoor_max_offset": "A sensor far from the thermostat can read very differently. This caps how far the target can be moved so a faulty sensor cannot cause extreme settings. Shown in {unit}."
+          "indoor_max_offset": "A sensor far from the thermostat can read very differently. This caps how far the target can be moved so a faulty sensor cannot cause extreme settings. 1.5 is a good start; the shift is measured while the heating and cooling are idle. Shown in {unit}."
         }
       },
       "indoor_weights": {

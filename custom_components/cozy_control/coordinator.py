@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -119,6 +120,16 @@ class Openings:
     open_since: datetime | None
 
 
+# hvac_action values that mean the system is heating or cooling right now.
+RUNNING_ACTIONS = ("heating", "cooling", "preheating", "defrosting")
+# How slowly the indoor shift follows the gap between the thermostat and the
+# other sensors while idle (about two thirds of the way in this much idle time).
+# The first reading after the system stops counts as only a few minutes, since
+# the gap is still settling then.
+INDOOR_LEARN_TIME = timedelta(minutes=30)
+INDOOR_LEARN_FIRST_STEP = timedelta(minutes=5)
+
+
 @dataclass
 class IndoorReading:
     """The indoor temperature the rules are steering towards."""
@@ -173,6 +184,10 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self.feedback_undo: dict[str, Any] | None = None  # the table before the last comfort change
         # Where each changed row stood at the start of today, for the daily limit.
         self.feedback_day: dict[str, Any] = {}
+        # The indoor shift measured while the system was last idle, per sensor
+        # profile ("day" or a time window), kept while it heats or cools.
+        self.indoor_learned: dict[str, float] = {}
+        self._indoor_learned_at: dict[str, datetime] = {}
         self._store: Store[dict[str, Any]] = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
 
     # -- pause switch and window state survive restarts -------------------------
@@ -190,21 +205,28 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
         self.feedback_undo = undo if isinstance(undo, dict) and undo.get("key") in FEEDBACK_TABLES else None
         day = stored.get("feedback_day")
         self.feedback_day = day if isinstance(day, dict) else {}
+        learned = stored.get("indoor_learned")
+        if isinstance(learned, dict):
+            self.indoor_learned = {
+                str(k): float(v) for k, v in learned.items() if isinstance(v, (int, float))
+            }
         self._schedule_resume()
 
+    def _state_to_save(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "windows_open": self.windows_open,
+            "disabled_sources": sorted(self.disabled_sources),
+            "windows_resume_at": (
+                self.windows_resume_at.isoformat() if self.windows_resume_at else None
+            ),
+            "feedback_undo": self.feedback_undo,
+            "feedback_day": self.feedback_day,
+            "indoor_learned": self.indoor_learned,
+        }
+
     async def _async_save(self) -> None:
-        await self._store.async_save(
-            {
-                "enabled": self.enabled,
-                "windows_open": self.windows_open,
-                "disabled_sources": sorted(self.disabled_sources),
-                "windows_resume_at": (
-                    self.windows_resume_at.isoformat() if self.windows_resume_at else None
-                ),
-                "feedback_undo": self.feedback_undo,
-                "feedback_day": self.feedback_day,
-            }
-        )
+        await self._store.async_save(self._state_to_save())
 
     async def async_set_enabled(self, enabled: bool) -> None:
         self.enabled = enabled
@@ -461,7 +483,30 @@ class ComfortCoordinator(DataUpdateCoordinator[ComfortData]):
                     )
                 )
             )
-            offset = max(-limit, min(limit, own - average))
+            live = max(-limit, min(limit, own - average))
+            # While the system runs, the air around the thermostat changes much
+            # faster than the far rooms, so the gap between them grows. Shifting
+            # the target by that live gap makes the system run longer, which
+            # grows the gap again. So the shift follows the gap slowly, and only
+            # while the system is idle; while it heats or cools the shift holds.
+            action = thermostat.attributes.get("hvac_action")
+            if action is None:
+                offset = live  # this thermostat doesn't say whether it is running
+            else:
+                key = window or "day"
+                learned = self.indoor_learned.get(key)
+                if action not in RUNNING_ACTIONS:
+                    last = self._indoor_learned_at.get(key)
+                    step = INDOOR_LEARN_FIRST_STEP if last is None else now - last
+                    weight = 1 - math.exp(-(step / INDOOR_LEARN_TIME))
+                    learned = live * weight if learned is None else learned + (live - learned) * weight
+                    self._indoor_learned_at[key] = now
+                    if abs(round(learned, 2) - self.indoor_learned.get(key, 0.0)) >= 0.01:
+                        self.indoor_learned[key] = round(learned, 2)
+                        self._store.async_delay_save(self._state_to_save, 60)
+                else:
+                    self._indoor_learned_at.pop(key, None)
+                offset = max(-limit, min(limit, learned or 0.0))
         self.indoor_reading = IndoorReading(average, own, offset, used, window)
         return offset
 
